@@ -270,12 +270,15 @@ impl<'f> GroupMut<'f> {
     }
 
     /// Create a variable with the specified type
-    pub fn add_variable_with_type(
-        &'f mut self,
+    pub fn add_variable_with_type<'g>(
+        &'g mut self,
         name: &str,
         dims: &[&str],
         typ: &super::types::VariableType,
-    ) -> error::Result<VariableMut<'f>> {
+    ) -> error::Result<VariableMut<'g>> 
+    where
+        'f: 'g
+    {
         VariableMut::add_from_str(self.id(), typ.id(), name, dims)
     }
 }
