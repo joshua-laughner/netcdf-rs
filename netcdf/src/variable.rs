@@ -7,8 +7,7 @@ use std::marker::Sized;
 use std::mem::MaybeUninit;
 use std::ptr::addr_of;
 
-use super::attribute::AttrValue;
-use super::attribute::Attribute;
+use super::attribute::{Attribute, AttributeValue};
 use super::dimension::Dimension;
 use super::error;
 use super::extent::Extents;
@@ -19,6 +18,15 @@ use netcdf_sys::*;
 
 #[allow(clippy::doc_markdown)]
 /// This struct defines a `netCDF` variable.
+///
+/// This type is used for retrieving data from a variable.
+/// Metadata on the `netCDF`-level can be retrieved using e.g.
+/// [`fill_value`](Self::fill_value), [`endinanness`](Self::endianness).
+/// Use [`attributes`](Self::attribute) to get additional metadata assigned
+/// by the data producer. This crate will not apply any of the transformations
+/// given by such attributes (e.g. `add_offset` and `scale_factor` are NOT considered).
+///
+/// Use the `get*`-functions to retrieve values.
 #[derive(Debug, Clone)]
 pub struct Variable<'g> {
     /// The variable name
@@ -32,6 +40,14 @@ pub struct Variable<'g> {
 
 #[derive(Debug)]
 /// Mutable access to a variable.
+///
+/// This type is used for defining and inserting data into a variable.
+/// Some properties is required to be set before putting data, such as
+/// [`set_chunking`](Self::set_chunking) and [`set_compression`](Self::set_compression).
+/// After these are defined one can use the `put*`-functions to insert data into the variable.
+///
+/// This type derefs to a [`Variable`](Variable), which means [`VariableMut`](Self)
+/// can be used where [`Variable`](Variable) is expected.
 #[allow(clippy::module_name_repetitions)]
 pub struct VariableMut<'g>(
     pub(crate) Variable<'g>,
@@ -101,7 +117,7 @@ impl<'g> Variable<'g> {
         }))
     }
 
-    /// Get name of variable
+    /// Get the name of variable
     pub fn name(&self) -> String {
         let mut name = vec![0_u8; NC_MAX_NAME as usize + 1];
         unsafe {
@@ -128,6 +144,21 @@ impl<'g> Variable<'g> {
             .expect("Could not get attributes")
             .map(Result::unwrap)
     }
+    /// Get the attribute value
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let var: netcdf::Variable = todo!();
+    /// let capture_date: String = var.attribute_value("capture_date").transpose()?
+    ///                               .expect("no such attribute").try_into()?;
+    /// println!("Captured at {capture_date}");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn attribute_value(&self, name: &str) -> Option<error::Result<AttributeValue>> {
+        self.attribute(name).as_ref().map(Attribute::value)
+    }
     /// Dimensions for a variable
     pub fn dimensions(&self) -> &[Dimension] {
         &self.dimensions
@@ -148,7 +179,7 @@ impl<'g> Variable<'g> {
     /// # Errors
     ///
     /// Not a `netCDF-4` file
-    pub fn endian_value(&self) -> error::Result<Endianness> {
+    pub fn endianness(&self) -> error::Result<Endianness> {
         let mut e: nc_type = 0;
         unsafe {
             error::checked(super::with_lock(|| {
@@ -176,7 +207,7 @@ impl<'g> VariableMut<'g> {
     /// # Errors
     ///
     /// Not a `netcdf-4` file or `deflate_level` not valid
-    pub fn compression(&mut self, deflate_level: nc_type, shuffle: bool) -> error::Result<()> {
+    pub fn set_compression(&mut self, deflate_level: nc_type, shuffle: bool) -> error::Result<()> {
         unsafe {
             error::checked(super::with_lock(|| {
                 nc_def_var_deflate(
@@ -202,7 +233,7 @@ impl<'g> VariableMut<'g> {
     /// # Errors
     ///
     /// Not a `netCDF-4` file or invalid chunksize
-    pub fn chunking(&mut self, chunksize: &[usize]) -> error::Result<()> {
+    pub fn set_chunking(&mut self, chunksize: &[usize]) -> error::Result<()> {
         if self.dimensions.is_empty() {
             // Can't really set chunking, would lead to segfault
             return Ok(());
@@ -701,9 +732,9 @@ impl std::ops::Deref for NcString {
 
 impl<'g> VariableMut<'g> {
     /// Adds an attribute to the variable
-    pub fn add_attribute<T>(&mut self, name: &str, val: T) -> error::Result<Attribute>
+    pub fn put_attribute<T>(&mut self, name: &str, val: T) -> error::Result<Attribute>
     where
-        T: Into<AttrValue>,
+        T: Into<AttributeValue>,
     {
         Attribute::put(self.ncid, self.varid, name, val.into())
     }
@@ -727,7 +758,7 @@ impl<'g> Variable<'g> {
 
     ///  Fetches one specific value at specific indices
     ///  indices must has the same length as self.dimensions.
-    pub fn value<T: NcPutGet, E>(&self, indices: E) -> error::Result<T>
+    pub fn get_value<T: NcPutGet, E>(&self, indices: E) -> error::Result<T>
     where
         E: TryInto<Extents>,
         E::Error: Into<error::Error>,
@@ -760,7 +791,7 @@ impl<'g> Variable<'g> {
 
     /// Reads a string variable. This involves two copies per read, and should
     /// be avoided in performance critical code
-    pub fn string_value<E>(&self, indices: E) -> error::Result<String>
+    pub fn get_string<E>(&self, indices: E) -> error::Result<String>
     where
         E: TryInto<Extents>,
         E::Error: Into<error::Error>,
@@ -784,7 +815,24 @@ impl<'g> Variable<'g> {
     }
 
     /// Get multiple values from a variable
-    pub fn values<T: NcPutGet, E>(&self, extents: E) -> error::Result<Vec<T>>
+    ///
+    /// Take notice:
+    /// `scale_factor` and `offset_factor` and other attributes are not
+    /// automatically applied. To take such into account, you can use code like below
+    /// ```rust,no_run
+    /// # use netcdf::AttributeValue;
+    /// # let f = netcdf::create("file.nc")?;
+    /// # let var = f.variable("stuff").unwrap();
+    /// // let var = ...
+    /// // let values = ...
+    /// if let Some(scale_offset) = var.attribute_value("scale_offset").transpose()? {
+    ///     let scale_offset: f64 = scale_offset.try_into()?;
+    ///     // values += scale_offset
+    /// }
+    /// # Result::<(), netcdf::Error>::Ok(())
+    /// ```
+    /// where `Option::transpose` is used to bubble up any read errors
+    pub fn get_values<T: NcPutGet, E>(&self, extents: E) -> error::Result<Vec<T>>
     where
         E: TryInto<Extents>,
         E::Error: Into<error::Error>,
@@ -797,7 +845,19 @@ impl<'g> Variable<'g> {
     /// Fetches variable
     fn values_arr_mono<T: NcPutGet>(&self, extents: &Extents) -> error::Result<ArrayD<T>> {
         let dims = self.dimensions();
-        let (start, count, stride) = extents.get_start_count_stride(dims)?;
+        let mut start = vec![];
+        let mut count = vec![];
+        let mut stride = vec![];
+        let mut shape = vec![];
+
+        for item in extents.iter_with_dims(dims)? {
+            start.push(item.start);
+            count.push(item.count);
+            stride.push(item.stride);
+            if !item.is_an_index {
+                shape.push(item.count);
+            }
+        }
 
         let number_of_elements = count.iter().copied().fold(1_usize, usize::saturating_mul);
         let mut values = Vec::with_capacity(number_of_elements);
@@ -806,18 +866,81 @@ impl<'g> Variable<'g> {
             values.set_len(number_of_elements);
         };
 
-        Ok(ArrayD::from_shape_vec(count, values).unwrap())
+        Ok(ArrayD::from_shape_vec(shape, values).unwrap())
     }
 
     #[cfg(feature = "ndarray")]
-    /// Fetches variable
-    pub fn values_arr<T: NcPutGet, E>(&self, extents: E) -> error::Result<ArrayD<T>>
+    /// Get values from a variable
+    pub fn get<T: NcPutGet, E>(&self, extents: E) -> error::Result<ArrayD<T>>
     where
         E: TryInto<Extents>,
         E::Error: Into<error::Error>,
     {
         let extents: Extents = extents.try_into().map_err(Into::into)?;
         self.values_arr_mono(&extents)
+    }
+
+    #[cfg(feature = "ndarray")]
+    /// Get values from a variable directly into an ndarray
+    pub fn get_into<T: NcPutGet, E, D>(
+        &self,
+        extents: E,
+        mut out: ndarray::ArrayViewMut<T, D>,
+    ) -> error::Result<()>
+    where
+        D: ndarray::Dimension,
+        E: TryInto<Extents>,
+        E::Error: Into<error::Error>,
+    {
+        let extents = extents.try_into().map_err(|e| e.into())?;
+
+        let dims = self.dimensions();
+        let mut start = Vec::with_capacity(dims.len());
+        let mut count = Vec::with_capacity(dims.len());
+        let mut stride = Vec::with_capacity(dims.len());
+
+        let mut rem_outshape = out.shape();
+
+        for (pos, item) in extents.iter_with_dims(dims)?.enumerate() {
+            start.push(item.start);
+            count.push(item.count);
+            stride.push(item.stride);
+            if !item.is_an_index {
+                let cur_dim_len = if let Some((&head, rest)) = rem_outshape.split_first() {
+                    rem_outshape = rest;
+                    head
+                } else {
+                    return Err(("Output array dimensionality is less than extents").into());
+                };
+                if item.count != cur_dim_len {
+                    return Err(format!("Item count (position {pos}) as {} but expected in output was {cur_dim_len}", item.count).into());
+                }
+            }
+        }
+        if !rem_outshape.is_empty() {
+            return Err(("Output array dimensionality is larger than extents").into());
+        }
+
+        let slice = if let Some(slice) = out.as_slice_mut() {
+            slice
+        } else {
+            return Err("Output array must be in standard layout".into());
+        };
+
+        assert_eq!(
+            slice.len(),
+            count.iter().copied().fold(1, usize::saturating_mul),
+            "Output size and number of elements to get are not compatible"
+        );
+
+        // Safety:
+        // start, count, stride are correct length
+        // slice is valid pointer, with enough space to hold all elements
+        unsafe {
+            T::get_vars(self, &start, &count, &stride, slice.as_mut_ptr())?;
+        }
+
+        Ok(())
     }
 
     /// Get the fill value of a variable
@@ -863,7 +986,7 @@ impl<'g> Variable<'g> {
     }
     /// Fetches variable into slice
     /// buffer must be able to hold all the requested elements
-    pub fn values_to<T: NcPutGet, E>(&self, buffer: &mut [T], extents: E) -> error::Result<()>
+    pub fn get_values_into<T: NcPutGet, E>(&self, buffer: &mut [T], extents: E) -> error::Result<()>
     where
         E: TryInto<Extents>,
         E::Error: Into<error::Error>,
@@ -913,7 +1036,7 @@ impl<'g> Variable<'g> {
     /// strings will be allocated in `buf`, and this library will
     /// not keep track of the allocations.
     /// This can lead to memory leaks.
-    pub fn raw_values<E>(&self, buf: &mut [u8], extents: E) -> error::Result<()>
+    pub fn get_raw_values<E>(&self, buf: &mut [u8], extents: E) -> error::Result<()>
     where
         E: TryInto<Extents>,
         E::Error: Into<error::Error>,
@@ -966,7 +1089,7 @@ impl<'g> Variable<'g> {
         Ok(v)
     }
     /// Get a vlen element
-    pub fn vlen<T: NcPutGet, E>(&self, indices: E) -> error::Result<Vec<T>>
+    pub fn get_vlen<T: NcPutGet, E>(&self, indices: E) -> error::Result<Vec<T>>
     where
         E: TryInto<Extents>,
         E::Error: Into<error::Error>,
@@ -1123,7 +1246,7 @@ impl<'g> VariableMut<'g> {
     /// # Errors
     ///
     /// Not a `netCDF-4` file, late define
-    pub fn endian(&mut self, e: Endianness) -> error::Result<()> {
+    pub fn set_endianness(&mut self, e: Endianness) -> error::Result<()> {
         let endianness = match e {
             Endianness::Native => NC_ENDIAN_NATIVE,
             Endianness::Little => NC_ENDIAN_LITTLE,
@@ -1233,6 +1356,82 @@ impl<'g> VariableMut<'g> {
         let extent = indices.try_into().map_err(Into::into)?;
         self.put_vlen_mono(vec, &extent)
     }
+
+    #[cfg(feature = "ndarray")]
+    /// Put values in an ndarray into the variable
+    pub fn put<T: NcPutGet, E, D>(
+        &mut self,
+        extent: E,
+        arr: ndarray::ArrayView<T, D>,
+    ) -> error::Result<()>
+    where
+        E: TryInto<Extents>,
+        E::Error: Into<error::Error>,
+        D: ndarray::Dimension,
+    {
+        let extent = extent.try_into().map_err(|e| e.into())?;
+
+        let slice = if let Some(slice) = arr.as_slice() {
+            slice
+        } else {
+            return Err(
+                "Slice is not contiguous or in c-order, you might want to use `as_standard_layout`"
+                    .into(),
+            );
+        };
+
+        let dimlen = self.dimensions.len();
+        let mut start = Vec::with_capacity(dimlen);
+        let mut count = Vec::with_capacity(dimlen);
+        let mut stride = Vec::with_capacity(dimlen);
+
+        let mut remaining_arrshape = arr.shape();
+        for (pos, item) in extent.iter_with_dims(self.dimensions())?.enumerate() {
+            if item.is_an_index {
+                start.push(item.start);
+                count.push(item.count);
+                stride.push(item.stride);
+                continue;
+            }
+            let arr_len = if let Some((&head, rest)) = remaining_arrshape.split_first() {
+                remaining_arrshape = rest;
+                head
+            } else {
+                return Err("Extents have greater dimensionality than the input array".into());
+            };
+
+            start.push(item.start);
+            if arr_len != item.count {
+                if arr_len > item.count && item.is_growable && !item.is_upwards_limited {
+                    // Item is allowed to grow to accomodate the
+                    // extra values in the array
+                } else {
+                    return Err(format!(
+                        "Variable dimension (at position {pos}) has length {}, but input array has a size of {arr_len}",
+                        item.count,
+                    )
+                    .into());
+                }
+            }
+            count.push(arr_len);
+            stride.push(item.stride);
+        }
+        if !remaining_arrshape.is_empty() {
+            return Err("Extents have lesser dimensionality than the input array".into());
+        }
+
+        assert_eq!(
+            arr.len(),
+            count.iter().copied().fold(1, usize::saturating_mul),
+            "Mismatch between the number of elements in array and the calculated `count`s"
+        );
+
+        // Safety:
+        // Dimensionality matches (always pushing in for loop)
+        // slice is valid pointer since we assert the size above
+        // slice is valid pointer since memory order is standard_layout (C)
+        unsafe { T::put_vars(self, &start, &count, &stride, slice.as_ptr()) }
+    }
 }
 
 impl<'g> VariableMut<'g> {
@@ -1326,7 +1525,7 @@ pub(crate) fn variables_at_ncid<'g>(
 pub(crate) fn add_variable_from_identifiers<'g>(
     ncid: nc_type,
     name: &str,
-    dims: &[super::dimension::Identifier],
+    dims: &[super::dimension::DimensionIdentifier],
     xtype: nc_type,
 ) -> error::Result<VariableMut<'g>> {
     let cname = super::utils::short_name_to_bytes(name)?;

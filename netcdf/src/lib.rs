@@ -9,11 +9,11 @@
 //! See the [`CF Conventions`](http://cfconventions.org/) for conventions used for climate and
 //! forecast models.
 //!
-//! To explore the documentation, see the `Functions` section, in particular
-//! `open()`, `create()`, and `append()`.
+//! To explore the documentation, see the [`Functions`](#functions) section, in particular
+//! [`open()`](open), [`create()`](create), and [`append()`](append).
 //!
 //! For more information see:
-//! * [The official introduction to `netCDF`](https://www.unidata.ucar.edu/software/netcdf/docs/netcdf_introduction.html)
+//! * [The official introduction to `netCDF`](https://docs.unidata.ucar.edu/nug/current/netcdf_introduction.html)
 //! * [The `netCDF-c` repository](https://github.com/Unidata/netcdf-c)
 //!
 //! # Examples
@@ -29,24 +29,32 @@
 //! let var = &file.variable("data").expect("Could not find variable 'data'");
 //!
 //! // Read a single datapoint from a 1D variable as a numeric type
-//! let data_i32 = var.value::<i32, _>(4)?;
-//! let data_f32 : f32 = var.value(5)?;
+//! let data_i32 = var.get_value::<i32, _>(4)?;
+//! let data_f32 : f32 = var.get_value(5)?;
 //!
 //! // If your variable is multi-dimensional you need to use a
 //! // type that supports `Selection`, such as a tuple or array
-//! let data_i32 = var.value::<i32, _>([40, 0, 0])?;
-//! let data_i32 = var.value::<i32, _>((40, 0, 0))?;
+//! let data_i32 = var.get_value::<i32, _>([40, 0, 0])?;
+//! let data_i32 = var.get_value::<i32, _>((40, 0, 0))?;
 //!
 //! // You can use `values_arr()` to get all the data from the variable.
+//! // This requires the `ndarray` feature
 //! // Passing `..` will give you the entire slice
 //! # #[cfg(feature = "ndarray")]
-//! let data = var.values_arr::<i32, _>(..)?;
+//! let data = var.get::<i32, _>(..)?;
 //!
 //! // A subset can also be selected, the following will extract the slice at
 //! // `(40, 0, 0)` and get a dataset of size `100, 100` from this
 //! # #[cfg(feature = "ndarray")]
-//! let data = var.values_arr::<i32, _>(([40, 0 ,0], [1, 100, 100]))?;
-//! let data = var.values_arr::<i32, _>((40, ..100, ..100))?;
+//! let data = var.get::<i32, _>(([40, 0 ,0], [1, 100, 100]))?;
+//! # #[cfg(feature = "ndarray")]
+//! let data = var.get::<i32, _>((40, ..100, ..100))?;
+//!
+//! // You can read into an ndarray to reuse an allocation
+//! # #[cfg(feature = "ndarray")]
+//! let mut data = ndarray::Array::<f32, _>::zeros((100, 100));
+//! # #[cfg(feature = "ndarray")]
+//! var.get_into((0, .., ..), data.view_mut())?;
 //! # Ok(()) }
 //! ```
 //!
@@ -67,9 +75,10 @@
 //!             "crab_coolness_level",
 //!             &["time", "ncrabs"],
 //! )?;
-//! // Metadata can be added to the variable
-//! var.add_attribute("units", "Kelvin")?;
-//! var.add_attribute("add_offset", 273.15_f32)?;
+//! // Metadata can be added to the variable, but will not be used when
+//! // writing or reading data
+//! var.put_attribute("units", "Kelvin")?;
+//! var.put_attribute("add_offset", 273.15_f32)?;
 //!
 //! // Data can then be created and added to the variable
 //! let data : Vec<i32> = vec![42; 10];
@@ -78,6 +87,12 @@
 //! // Values can be added along the unlimited dimension, which
 //! // resizes along the `time` axis
 //! var.put_values(&data, (11, ..))?;
+//!
+//! // Using the ndarray feature you can also use
+//! # #[cfg(feature = "ndarray")]
+//! let values = ndarray::Array::from_shape_fn((5, 10), |(j, i)| (j * 10 + i) as f32);
+//! # #[cfg(feature = "ndarray")]
+//! var.put((11.., ..), values.view())?;
 //! # Ok(()) }
 //! ```
 
@@ -87,29 +102,32 @@
 #![allow(clippy::wildcard_imports)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-use lazy_static::lazy_static;
 use netcdf_sys::nc_type;
-use std::sync::Mutex;
 
-pub mod attribute;
-pub mod dimension;
-pub mod error;
-pub mod extent;
-pub mod file;
-pub mod group;
+pub(crate) mod attribute;
+pub(crate) mod dimension;
+pub(crate) mod error;
+pub(crate) mod extent;
+pub(crate) mod file;
+pub(crate) mod group;
 pub mod types;
-pub mod variable;
+pub(crate) mod variable;
 
-pub use attribute::*;
-pub use dimension::*;
-pub use file::*;
-pub use group::*;
-pub use variable::*;
+pub use attribute::{Attribute, AttributeValue};
+pub use dimension::{Dimension, DimensionIdentifier};
+pub use error::{Error, Result};
+pub use extent::{Extent, Extents};
+#[cfg(feature = "has-mmap")]
+pub use file::FileMem;
+pub(crate) use file::RawFile;
+pub use file::{File, FileMut, Options};
+pub use group::{Group, GroupMut};
+pub use variable::{Endianness, NcPutGet, Variable, VariableMut};
 
 /// Open a netcdf file in create mode
 ///
 /// Will create a `netCDF4` file and overwrite existing file
-pub fn create<P>(name: P) -> error::Result<MutableFile>
+pub fn create<P>(name: P) -> error::Result<FileMut>
 where
     P: AsRef<std::path::Path>,
 {
@@ -117,7 +135,7 @@ where
 }
 
 /// Open a `netCDF` file in create mode with the given options
-pub fn create_with<P>(name: P, options: Options) -> error::Result<MutableFile>
+pub fn create_with<P>(name: P, options: Options) -> error::Result<FileMut>
 where
     P: AsRef<std::path::Path>,
 {
@@ -125,7 +143,7 @@ where
 }
 
 /// Open a `netCDF` file in append mode
-pub fn append<P>(name: P) -> error::Result<MutableFile>
+pub fn append<P>(name: P) -> error::Result<FileMut>
 where
     P: AsRef<std::path::Path>,
 {
@@ -133,7 +151,7 @@ where
 }
 
 /// Open a `netCDF` file in append mode with the given options
-pub fn append_with<P>(name: P, options: Options) -> error::Result<MutableFile>
+pub fn append_with<P>(name: P, options: Options) -> error::Result<FileMut>
 where
     P: AsRef<std::path::Path>,
 {
@@ -158,19 +176,14 @@ where
 
 #[cfg(feature = "has-mmap")]
 /// Open a `netCDF` file from a buffer
-pub fn open_mem<'a>(name: Option<&str>, mem: &'a [u8]) -> error::Result<MemFile<'a>> {
+pub fn open_mem<'a>(name: Option<&str>, mem: &'a [u8]) -> error::Result<FileMem<'a>> {
     RawFile::open_from_memory(name, mem)
-}
-
-lazy_static! {
-    /// Use this when accessing `netCDF` functions
-    pub(crate) static ref LOCK: Mutex<()> = Mutex::new(());
 }
 
 /// All functions should be wrapped in this locker. Disregarding this, expect
 /// segfaults, especially on non-threadsafe hdf5 builds
 pub(crate) fn with_lock<F: FnMut() -> nc_type>(mut f: F) -> nc_type {
-    let _l = LOCK.lock().unwrap();
+    let _l = netcdf_sys::libnetcdf_lock.lock().unwrap();
     f()
 }
 

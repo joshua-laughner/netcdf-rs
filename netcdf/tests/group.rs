@@ -63,13 +63,40 @@ fn find_variable() {
     assert!(group.variable("vvvvv").is_none());
 
     for mut var in group.variables_mut() {
-        if var.dimensions().len() > 0 {
-            var.compression(3, false).unwrap();
+        if !var.dimensions().is_empty() {
+            var.set_compression(3, false).unwrap();
         }
         if var.name() == "z" {
-            var.chunking(&[1]).unwrap();
+            var.set_chunking(&[1]).unwrap();
         } else {
-            var.chunking(&[]).unwrap();
+            var.set_chunking(&[]).unwrap();
         }
+    }
+}
+
+#[test]
+fn add_and_get_from_path() {
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("cdf5.nc");
+    {
+        let mut file = netcdf::create(path.clone()).unwrap();
+        file.add_group("a/b").unwrap();
+        file.add_dimension("a/b/dim", 1).unwrap();
+        assert!(file.add_dimension("a/c/dim", 1).is_err());
+        file.add_variable::<f64>("a/b/var", &["dim"]).unwrap();
+        assert!(file.add_variable::<f64>("a/c/var", &["dim"]).is_err());
+        file.add_attribute("a/b/attr", "test").unwrap();
+        assert!(file.add_attribute("a/c/test", "test").is_err());
+    }
+    let file = netcdf::open(path).unwrap();
+    let root = file.root().unwrap();
+    assert_eq!(
+        root.group("a/b").unwrap().variable("var").unwrap().name(),
+        root.variable("a/b/var").unwrap().name(),
+    );
+    assert!(file.group("missing/subgrp").is_err());
+    match file.attribute("a/b/attr").unwrap().value().unwrap() {
+        netcdf::AttributeValue::Str(string) => assert_eq!(string, "test"),
+        _ => panic!(),
     }
 }
