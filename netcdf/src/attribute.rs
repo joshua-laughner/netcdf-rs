@@ -711,6 +711,21 @@ impl<'a> Attribute<'a> {
         })
     }
 
+    pub(crate) fn delete(
+        ncid: nc_type,
+        varid: nc_type,
+        name: &str
+    ) -> error::Result<()> {
+        let cname = super::utils::short_name_to_bytes(name)?;
+
+        error::checked(unsafe {
+            super::with_lock(|| {
+                nc_del_att(ncid, varid, cname.as_ptr().cast())
+            })
+        })?;
+        Ok(())
+    }
+
     pub(crate) fn find_from_name(
         ncid: nc_type,
         varid: Option<nc_type>,
