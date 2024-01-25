@@ -720,10 +720,36 @@ impl<'a> Attribute<'a> {
 
         error::checked(unsafe {
             super::with_lock(|| {
-                nc_del_att(ncid, varid, cname.as_ptr().cast())
+                let res = nc_del_att(ncid, varid, cname.as_ptr().cast());
+                if res == NC_ENOTINDEFINE {
+                    Self::delete_with_redef(ncid, varid, &cname)
+                } else { 
+                    res
+                }
             })
         })?;
         Ok(())
+    }
+
+    unsafe fn delete_with_redef(
+        ncid: nc_type,
+        varid: nc_type,
+        cname: &[u8]
+    ) -> nc_type {
+        // In theory, we should only be using this function if the file
+        // type is classic or 64-bit offset, which don't allow groups.
+        // Therefore, ncid should be the root group (which nc_redef and nc_enddef require)
+        let errno = nc_redef(ncid);
+        if errno != NC_NOERR {
+            return errno;
+        }
+
+        let errno = nc_del_att(ncid, varid, cname.as_ptr().cast());
+        if errno != NC_NOERR {
+            return errno;
+        }
+
+        nc_enddef(ncid)
     }
 
     pub(crate) fn find_from_name(
