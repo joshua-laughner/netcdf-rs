@@ -50,6 +50,36 @@ fn attribute_put() {
     f.add_attribute("b", "2").unwrap();
     assert_eq!(f.attribute("b").unwrap().value().unwrap(), "2".into());
 }
+
+#[test]
+/// Making sure that attributes are deleted correctly.
+fn attribute_delete() {
+    let d = tempfile::tempdir().expect("Could not create tempdir");
+    let p = d.path().join("attribute_put.nc");
+    let mut f = netcdf::create(p).unwrap();
+
+    // Root level attribute
+    f.add_attribute("a", "1").unwrap();
+    assert!(f.attribute("a").is_some());
+    f.delete_attribute("a").unwrap();
+    assert!(f.attribute("a").is_none());
+
+
+    // Group attribute
+    let mut grp = f.add_group("group").unwrap();
+    grp.add_attribute("b", "2").unwrap();
+    assert!(grp.attribute("b").is_some());
+    grp.delete_attribute("b").unwrap();
+    assert!(grp.attribute("b").is_none());
+
+    // Variable attribute
+    let mut var = f.add_variable::<i32>("v", &[]).unwrap();
+    var.put_attribute("c", "3").unwrap();
+    assert!(var.attribute("c").is_some());
+    var.delete_attribute("c").unwrap();
+    assert!(var.attribute("c").is_none());
+}
+
 #[test]
 #[cfg(feature = "ndarray")]
 fn open_pres_temp_4d() {

@@ -738,6 +738,11 @@ impl<'g> VariableMut<'g> {
     {
         Attribute::put(self.ncid, self.varid, name, val.into())
     }
+
+    /// Deletes an attribute from the variable
+    pub fn delete_attribute(&mut self, name: &str) -> error::Result<()> {
+        Attribute::delete(self.ncid, self.varid, name)
+    }
 }
 
 impl<'g> Variable<'g> {

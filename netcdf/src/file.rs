@@ -316,6 +316,12 @@ impl FileMut {
         Attribute::put(ncid, NC_GLOBAL, name, val.into())
     }
 
+    /// Delete an attribute from the root group
+    pub fn delete_attribute<'a>(&'a mut self, name: &str) -> error::Result<()> {
+        let (ncid, name) = super::group::get_parent_ncid_and_stem(self.ncid(), name)?;
+        Attribute::delete(ncid, NC_GLOBAL, name)
+    }
+
     /// Adds a dimension with the given name and size. A size of zero gives an unlimited dimension
     pub fn add_dimension<'f>(&'f mut self, name: &str, len: usize) -> error::Result<Dimension<'f>> {
         let (ncid, name) = super::group::get_parent_ncid_and_stem(self.ncid(), name)?;
