@@ -1,6 +1,6 @@
 [package]
 name = "netcdf"
-version = "0.9.0"
+version = "0.9.3"
 authors = [
     "Michael Hiley <mhiley@gmail.com>",
     "Magnus Ulimoen <magnusu@met.no>"
@@ -18,15 +18,21 @@ build = "build.rs"
 [features]
 default = ["ndarray"]
 static = ["netcdf-sys/static"]
+derive = ["dep:netcdf-derive"]
+mpi = ["dep:mpi-sys", "netcdf-sys/mpi"]
+ndarray = ["dep:ndarray"]
 
 [dependencies]
 ndarray = { version = "0.15", optional = true }
-netcdf-sys = { path = "../netcdf-sys", version = "0.6.0" }
-bitflags = "1.2.1"
+netcdf-sys = { workspace = true }
+netcdf-derive = { workspace = true, optional = true }
+bitflags = "2.4.2"
+libc = "0.2.155"
+mpi-sys = { workspace = true, optional = true }
 
 [dev-dependencies]
+clap = { version = "4.5.1", features = ["derive"] }
 tempfile = "3.1.0"
-structopt = "0.3.3"
 
 [package.metadata.docs.rs]
 features = ["static"]

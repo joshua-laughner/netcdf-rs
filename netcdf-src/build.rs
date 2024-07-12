@@ -27,8 +27,19 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     let hdf5_incdir = std::env::var("DEP_HDF5_INCLUDE").unwrap();
-    let hdf5_lib = std::env::var("DEP_HDF5_LIBRARY").unwrap();
-    let hdf5_hl_lib = std::env::var("DEP_HDF5_HL_LIBRARY").unwrap();
+    let mut hdf5_lib = std::env::var("DEP_HDF5_LIBRARY").unwrap();
+    let mut hdf5_hl_lib = std::env::var("DEP_HDF5_HL_LIBRARY").unwrap();
+
+    #[cfg(unix)]
+    {
+        let hdf5_root = format!("{hdf5_incdir}/../");
+        let mut hdf5_libdir = format!("{hdf5_root}/lib/");
+        if !std::path::Path::new(&hdf5_libdir).exists() {
+            hdf5_libdir = format!("{hdf5_root}/lib64/");
+        }
+        hdf5_lib = format!("{hdf5_libdir}/{hdf5_lib}.a");
+        hdf5_hl_lib = format!("{hdf5_libdir}/{hdf5_hl_lib}.a");
+    }
 
     let hdf5_version = get_hdf5_version();
 
@@ -52,6 +63,10 @@ fn main() {
         .define("HDF5_HL_LIBRARY", &hdf5_hl_lib)
         .define("HDF5_INCLUDE_DIR", hdf5_incdir)
         //
+        .define("ENABLE_LIBXML2", "OFF") // Use bundled xml2
+        //
+        .define("ENABLE_PARALLEL4", "OFF") // TODO: Enable mpi support
+        //
         .define("ENABLE_NCZARR", "OFF") // TODO: requires a bunch of deps
         //
         .define("ENABLE_DAP", "OFF") // TODO: feature flag, requires curl
@@ -66,6 +81,10 @@ fn main() {
     if feature!("DAP").is_ok() {
         netcdf_config.define("ENABLE_DAP", "ON");
         netcdf_config.define("ENABLE_BYTERANGE", "ON");
+    }
+
+    if feature!("MPI").is_ok() {
+        panic!("MPI feature was requested but the static build of netcdf does not support this");
     }
 
     let netcdf = netcdf_config.build();

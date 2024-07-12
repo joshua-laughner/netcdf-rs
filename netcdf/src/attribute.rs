@@ -1,11 +1,14 @@
 //! Add and read attributes from netcdf groups and variables
-
 #![allow(clippy::similar_names)]
-use super::error;
-use netcdf_sys::*;
+
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::c_char;
+
+use netcdf_sys::*;
+
+use super::error;
+use super::utils::with_lock;
 
 /// Extra properties of a variable or a group can be represented
 /// with attributes. Primarily added with `add_attribute` on
@@ -50,7 +53,7 @@ impl<'a> Attribute<'a> {
     fn num_elems(&self) -> error::Result<usize> {
         let mut nelems = 0;
         unsafe {
-            error::checked(super::with_lock(|| {
+            error::checked(with_lock(|| {
                 nc_inq_attlen(
                     self.ncid,
                     self.varid,
@@ -65,7 +68,7 @@ impl<'a> Attribute<'a> {
     fn typ(&self) -> error::Result<nc_type> {
         let mut atttype = 0;
         unsafe {
-            error::checked(super::with_lock(|| {
+            error::checked(with_lock(|| {
                 nc_inq_atttype(
                     self.ncid,
                     self.varid,
@@ -91,7 +94,7 @@ impl<'a> Attribute<'a> {
                 1 => {
                     let mut value = 0;
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_uchar(
                                 self.ncid,
                                 self.varid,
@@ -105,7 +108,7 @@ impl<'a> Attribute<'a> {
                 len => {
                     let mut values = vec![0_u8; len];
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_uchar(
                                 self.ncid,
                                 self.varid,
@@ -121,7 +124,7 @@ impl<'a> Attribute<'a> {
                 1 => {
                     let mut value = 0;
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_schar(
                                 self.ncid,
                                 self.varid,
@@ -135,7 +138,7 @@ impl<'a> Attribute<'a> {
                 len => {
                     let mut values = vec![0; len as _];
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_schar(
                                 self.ncid,
                                 self.varid,
@@ -151,7 +154,7 @@ impl<'a> Attribute<'a> {
                 1 => {
                     let mut value = 0;
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_short(
                                 self.ncid,
                                 self.varid,
@@ -165,7 +168,7 @@ impl<'a> Attribute<'a> {
                 len => {
                     let mut values = vec![0; len as _];
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_short(
                                 self.ncid,
                                 self.varid,
@@ -181,7 +184,7 @@ impl<'a> Attribute<'a> {
                 1 => {
                     let mut value = 0;
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_ushort(
                                 self.ncid,
                                 self.varid,
@@ -195,7 +198,7 @@ impl<'a> Attribute<'a> {
                 len => {
                     let mut values = vec![0; len as _];
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_ushort(
                                 self.ncid,
                                 self.varid,
@@ -211,7 +214,7 @@ impl<'a> Attribute<'a> {
                 1 => {
                     let mut value = 0;
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_int(
                                 self.ncid,
                                 self.varid,
@@ -225,7 +228,7 @@ impl<'a> Attribute<'a> {
                 len => {
                     let mut values = vec![0; len as _];
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_int(
                                 self.ncid,
                                 self.varid,
@@ -241,7 +244,7 @@ impl<'a> Attribute<'a> {
                 1 => {
                     let mut value = 0;
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_uint(
                                 self.ncid,
                                 self.varid,
@@ -255,7 +258,7 @@ impl<'a> Attribute<'a> {
                 len => {
                     let mut values = vec![0; len as _];
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_uint(
                                 self.ncid,
                                 self.varid,
@@ -271,7 +274,7 @@ impl<'a> Attribute<'a> {
                 1 => {
                     let mut value = 0;
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_longlong(
                                 self.ncid,
                                 self.varid,
@@ -285,7 +288,7 @@ impl<'a> Attribute<'a> {
                 len => {
                     let mut values = vec![0; len as _];
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_longlong(
                                 self.ncid,
                                 self.varid,
@@ -302,7 +305,7 @@ impl<'a> Attribute<'a> {
                 1 => {
                     let mut value = 0;
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_ulonglong(
                                 self.ncid,
                                 self.varid,
@@ -316,7 +319,7 @@ impl<'a> Attribute<'a> {
                 len => {
                     let mut values = vec![0; len as _];
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_ulonglong(
                                 self.ncid,
                                 self.varid,
@@ -333,7 +336,7 @@ impl<'a> Attribute<'a> {
                 1 => {
                     let mut value = 0.0;
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_float(
                                 self.ncid,
                                 self.varid,
@@ -347,7 +350,7 @@ impl<'a> Attribute<'a> {
                 len => {
                     let mut values = vec![0.0; len as _];
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_float(
                                 self.ncid,
                                 self.varid,
@@ -363,7 +366,7 @@ impl<'a> Attribute<'a> {
                 1 => {
                     let mut value = 0.0;
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_double(
                                 self.ncid,
                                 self.varid,
@@ -377,7 +380,7 @@ impl<'a> Attribute<'a> {
                 len => {
                     let mut values = vec![0.0; len as _];
                     unsafe {
-                        error::checked(super::with_lock(|| {
+                        error::checked(with_lock(|| {
                             nc_get_att_double(
                                 self.ncid,
                                 self.varid,
@@ -393,7 +396,7 @@ impl<'a> Attribute<'a> {
                 let lentext = attlen;
                 let mut buf: Vec<u8> = vec![0; lentext as _];
                 unsafe {
-                    error::checked(super::with_lock(|| {
+                    error::checked(with_lock(|| {
                         nc_get_att_text(
                             self.ncid,
                             self.varid,
@@ -411,7 +414,7 @@ impl<'a> Attribute<'a> {
                 let mut buf: Vec<*mut c_char> = vec![std::ptr::null_mut(); attlen];
                 let result;
                 unsafe {
-                    error::checked(super::with_lock(|| {
+                    error::checked(with_lock(|| {
                         nc_get_att_string(
                             self.ncid,
                             self.varid,
@@ -430,7 +433,7 @@ impl<'a> Attribute<'a> {
                             }
                         })
                         .collect();
-                    super::with_lock(|| nc_free_string(attlen, buf.as_mut_ptr()));
+                    with_lock(|| nc_free_string(attlen, buf.as_mut_ptr()));
                 }
                 Ok(AttributeValue::Strs(result))
             }
@@ -452,7 +455,7 @@ impl<'a> AttributeIterator<'a> {
     pub(crate) fn new(ncid: nc_type, varid: Option<nc_type>) -> error::Result<Self> {
         let mut natts = 0;
         unsafe {
-            error::checked(super::with_lock(|| {
+            error::checked(with_lock(|| {
                 nc_inq_varnatts(ncid, varid.unwrap_or(NC_GLOBAL), &mut natts)
             }))?;
         }
@@ -475,7 +478,7 @@ impl<'a> Iterator for AttributeIterator<'a> {
 
         let mut name = [0_u8; NC_MAX_NAME as usize + 1];
         unsafe {
-            if let Err(e) = error::checked(super::with_lock(|| {
+            if let Err(e) = error::checked(with_lock(|| {
                 nc_inq_attname(
                     self.ncid,
                     self.varid.unwrap_or(NC_GLOBAL),
@@ -541,10 +544,10 @@ impl<'a> Attribute<'a> {
 
         error::checked(unsafe {
             match val {
-                AttributeValue::Uchar(x) => super::with_lock(|| {
+                AttributeValue::Uchar(x) => with_lock(|| {
                     nc_put_att_uchar(ncid, varid, cname.as_ptr().cast(), NC_UBYTE, 1, &x)
                 }),
-                AttributeValue::Uchars(x) => super::with_lock(|| {
+                AttributeValue::Uchars(x) => with_lock(|| {
                     nc_put_att_uchar(
                         ncid,
                         varid,
@@ -554,10 +557,10 @@ impl<'a> Attribute<'a> {
                         x.as_ptr(),
                     )
                 }),
-                AttributeValue::Schar(x) => super::with_lock(|| {
+                AttributeValue::Schar(x) => with_lock(|| {
                     nc_put_att_schar(ncid, varid, cname.as_ptr().cast(), NC_BYTE, 1, &x)
                 }),
-                AttributeValue::Schars(x) => super::with_lock(|| {
+                AttributeValue::Schars(x) => with_lock(|| {
                     nc_put_att_schar(
                         ncid,
                         varid,
@@ -567,10 +570,10 @@ impl<'a> Attribute<'a> {
                         x.as_ptr(),
                     )
                 }),
-                AttributeValue::Ushort(x) => super::with_lock(|| {
+                AttributeValue::Ushort(x) => with_lock(|| {
                     nc_put_att_ushort(ncid, varid, cname.as_ptr().cast(), NC_USHORT, 1, &x)
                 }),
-                AttributeValue::Ushorts(x) => super::with_lock(|| {
+                AttributeValue::Ushorts(x) => with_lock(|| {
                     nc_put_att_ushort(
                         ncid,
                         varid,
@@ -580,10 +583,10 @@ impl<'a> Attribute<'a> {
                         x.as_ptr(),
                     )
                 }),
-                AttributeValue::Short(x) => super::with_lock(|| {
+                AttributeValue::Short(x) => with_lock(|| {
                     nc_put_att_short(ncid, varid, cname.as_ptr().cast(), NC_SHORT, 1, &x)
                 }),
-                AttributeValue::Shorts(x) => super::with_lock(|| {
+                AttributeValue::Shorts(x) => with_lock(|| {
                     nc_put_att_short(
                         ncid,
                         varid,
@@ -593,10 +596,10 @@ impl<'a> Attribute<'a> {
                         x.as_ptr(),
                     )
                 }),
-                AttributeValue::Uint(x) => super::with_lock(|| {
+                AttributeValue::Uint(x) => with_lock(|| {
                     nc_put_att_uint(ncid, varid, cname.as_ptr().cast(), NC_UINT, 1, &x)
                 }),
-                AttributeValue::Uints(x) => super::with_lock(|| {
+                AttributeValue::Uints(x) => with_lock(|| {
                     nc_put_att_uint(
                         ncid,
                         varid,
@@ -606,10 +609,10 @@ impl<'a> Attribute<'a> {
                         x.as_ptr(),
                     )
                 }),
-                AttributeValue::Int(x) => super::with_lock(|| {
-                    nc_put_att_int(ncid, varid, cname.as_ptr().cast(), NC_INT, 1, &x)
-                }),
-                AttributeValue::Ints(x) => super::with_lock(|| {
+                AttributeValue::Int(x) => {
+                    with_lock(|| nc_put_att_int(ncid, varid, cname.as_ptr().cast(), NC_INT, 1, &x))
+                }
+                AttributeValue::Ints(x) => with_lock(|| {
                     nc_put_att_int(
                         ncid,
                         varid,
@@ -619,10 +622,10 @@ impl<'a> Attribute<'a> {
                         x.as_ptr(),
                     )
                 }),
-                AttributeValue::Ulonglong(x) => super::with_lock(|| {
+                AttributeValue::Ulonglong(x) => with_lock(|| {
                     nc_put_att_ulonglong(ncid, varid, cname.as_ptr().cast(), NC_UINT64, 1, &x)
                 }),
-                AttributeValue::Ulonglongs(x) => super::with_lock(|| {
+                AttributeValue::Ulonglongs(x) => with_lock(|| {
                     nc_put_att_ulonglong(
                         ncid,
                         varid,
@@ -632,10 +635,10 @@ impl<'a> Attribute<'a> {
                         x.as_ptr(),
                     )
                 }),
-                AttributeValue::Longlong(x) => super::with_lock(|| {
+                AttributeValue::Longlong(x) => with_lock(|| {
                     nc_put_att_longlong(ncid, varid, cname.as_ptr().cast(), NC_INT64, 1, &x)
                 }),
-                AttributeValue::Longlongs(x) => super::with_lock(|| {
+                AttributeValue::Longlongs(x) => with_lock(|| {
                     nc_put_att_longlong(
                         ncid,
                         varid,
@@ -645,10 +648,10 @@ impl<'a> Attribute<'a> {
                         x.as_ptr(),
                     )
                 }),
-                AttributeValue::Float(x) => super::with_lock(|| {
+                AttributeValue::Float(x) => with_lock(|| {
                     nc_put_att_float(ncid, varid, cname.as_ptr().cast(), NC_FLOAT, 1, &x)
                 }),
-                AttributeValue::Floats(x) => super::with_lock(|| {
+                AttributeValue::Floats(x) => with_lock(|| {
                     nc_put_att_float(
                         ncid,
                         varid,
@@ -658,10 +661,10 @@ impl<'a> Attribute<'a> {
                         x.as_ptr(),
                     )
                 }),
-                AttributeValue::Double(x) => super::with_lock(|| {
+                AttributeValue::Double(x) => with_lock(|| {
                     nc_put_att_double(ncid, varid, cname.as_ptr().cast(), NC_DOUBLE, 1, &x)
                 }),
-                AttributeValue::Doubles(x) => super::with_lock(|| {
+                AttributeValue::Doubles(x) => with_lock(|| {
                     nc_put_att_double(
                         ncid,
                         varid,
@@ -671,7 +674,7 @@ impl<'a> Attribute<'a> {
                         x.as_ptr(),
                     )
                 }),
-                AttributeValue::Str(ref x) => super::with_lock(|| {
+                AttributeValue::Str(ref x) => with_lock(|| {
                     nc_put_att_text(
                         ncid,
                         varid,
@@ -690,13 +693,13 @@ impl<'a> Attribute<'a> {
                     let cstring_pointers: Vec<*const c_char> =
                         cstrings.iter().map(|cs| cs.as_ptr()).collect();
 
-                    super::with_lock(|| {
+                    with_lock(|| {
                         nc_put_att_string(
                             ncid,
                             varid,
                             cname.as_ptr().cast(),
                             cstring_pointers.len(),
-                            cstring_pointers.as_ptr() as *mut *const _,
+                            cstring_pointers.as_ptr().cast_mut(),
                         )
                     })
                 }
@@ -726,7 +729,7 @@ impl<'a> Attribute<'a> {
         };
         let e = unsafe {
             // Checking whether the variable exists by probing for its id
-            super::with_lock(|| {
+            with_lock(|| {
                 nc_inq_attid(
                     ncid,
                     varid.unwrap_or(NC_GLOBAL),
@@ -889,7 +892,7 @@ fn conversion() {
 
 impl TryFrom<AttributeValue> for u8 {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<u8, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Uchar(x) => Ok(x),
             AttributeValue::Schar(x) => (x).try_into().map_err(error::Error::Conversion),
@@ -906,7 +909,7 @@ impl TryFrom<AttributeValue> for u8 {
 
 impl TryFrom<AttributeValue> for i8 {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<i8, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Uchar(x) => (x).try_into().map_err(error::Error::Conversion),
             AttributeValue::Schar(x) => Ok(x),
@@ -923,7 +926,7 @@ impl TryFrom<AttributeValue> for i8 {
 
 impl TryFrom<AttributeValue> for u16 {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<u16, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Uchar(x) => Ok((x).into()),
             AttributeValue::Schar(x) => (x).try_into().map_err(error::Error::Conversion),
@@ -940,7 +943,7 @@ impl TryFrom<AttributeValue> for u16 {
 
 impl TryFrom<AttributeValue> for i16 {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<i16, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Uchar(x) => Ok((x).into()),
             AttributeValue::Schar(x) => Ok((x).into()),
@@ -956,7 +959,7 @@ impl TryFrom<AttributeValue> for i16 {
 }
 impl TryFrom<AttributeValue> for u32 {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<u32, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Uchar(x) => Ok((x).into()),
             AttributeValue::Schar(x) => (x).try_into().map_err(error::Error::Conversion),
@@ -972,7 +975,7 @@ impl TryFrom<AttributeValue> for u32 {
 }
 impl TryFrom<AttributeValue> for i32 {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<i32, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Uchar(x) => Ok((x).into()),
             AttributeValue::Schar(x) => Ok((x).into()),
@@ -988,7 +991,7 @@ impl TryFrom<AttributeValue> for i32 {
 }
 impl TryFrom<AttributeValue> for u64 {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<u64, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Uchar(x) => Ok((x).into()),
             AttributeValue::Schar(x) => (x).try_into().map_err(error::Error::Conversion),
@@ -1004,7 +1007,7 @@ impl TryFrom<AttributeValue> for u64 {
 }
 impl TryFrom<AttributeValue> for i64 {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<i64, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Uchar(x) => Ok((x).into()),
             AttributeValue::Schar(x) => Ok((x).into()),
@@ -1020,7 +1023,7 @@ impl TryFrom<AttributeValue> for i64 {
 }
 impl TryFrom<AttributeValue> for f32 {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<f32, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Uchar(x) => Ok(x as _),
             AttributeValue::Schar(x) => Ok(x as _),
@@ -1038,7 +1041,7 @@ impl TryFrom<AttributeValue> for f32 {
 }
 impl TryFrom<AttributeValue> for f64 {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<f64, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Uchar(x) => Ok(x as _),
             AttributeValue::Schar(x) => Ok(x as _),
@@ -1057,7 +1060,7 @@ impl TryFrom<AttributeValue> for f64 {
 
 impl TryFrom<AttributeValue> for String {
     type Error = error::Error;
-    fn try_from(attr: AttributeValue) -> Result<String, Self::Error> {
+    fn try_from(attr: AttributeValue) -> Result<Self, Self::Error> {
         match attr {
             AttributeValue::Str(s) => Ok(s),
             _ => Err("Conversion not supported".into()),

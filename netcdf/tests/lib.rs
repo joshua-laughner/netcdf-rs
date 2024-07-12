@@ -982,11 +982,7 @@ fn unlimited_dimension_single_putting() {
 
 fn check_equal<T>(var: &netcdf::Variable, check: &[T])
 where
-    T: netcdf::NcPutGet
-        + std::clone::Clone
-        + std::default::Default
-        + std::fmt::Debug
-        + std::cmp::PartialEq,
+    T: netcdf::NcTypeDescriptor + Copy + Clone + Default + std::fmt::Debug + PartialEq,
 {
     let mut v: Vec<T> = vec![Default::default(); check.len()];
     var.get_values_into(&mut v, ..).unwrap();
@@ -1115,7 +1111,9 @@ fn string_variables() {
         file.add_unlimited_dimension("x").unwrap();
         file.add_dimension("y", 2).unwrap();
 
-        let var = &mut file.add_string_variable("str", &["x"]).unwrap();
+        let var = &mut file
+            .add_variable_with_type("str", &["x"], &netcdf::types::NcVariableType::String)
+            .unwrap();
 
         var.put_string("Hello world!", 0).unwrap();
         var.put_string("Trying a very long string just to see how that goes", [2])
@@ -1742,4 +1740,29 @@ fn ndarray_get_into() {
     var.get_into((.., .., ..), outarray.slice_mut(s![0, .., .., ..]))
         .unwrap();
     assert_eq!(values, outarray.slice(s![0, .., .., ..]));
+}
+
+#[test]
+fn sync_file() {
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("sync_file.nc");
+
+    let mut f = netcdf::create(path).unwrap();
+
+    f.add_unlimited_dimension("t").unwrap();
+    f.sync().unwrap();
+}
+
+#[test]
+fn close_file() {
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("close_file.nc");
+
+    let mut f = netcdf::create(&path).unwrap();
+
+    f.add_unlimited_dimension("t").unwrap();
+    f.close().unwrap();
+
+    let f = netcdf::open(path).unwrap();
+    f.close().unwrap();
 }

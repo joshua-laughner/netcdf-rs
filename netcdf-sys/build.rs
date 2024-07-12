@@ -146,6 +146,14 @@ impl NcMetaHeader {
                 "MEMIO requested but not found in this installation of netCDF"
             );
         }
+        if self.has_parallel {
+            println!("cargo:rustc-cfg=feature=\"has-par\"");
+        } else {
+            assert!(
+                feature!("MPI").is_err(),
+                "MPI requested but not found in this installation of netCDF"
+            );
+        }
     }
 }
 
@@ -284,6 +292,7 @@ fn main() {
         Version::new(4, 8, 1),
         Version::new(4, 9, 0),
         Version::new(4, 9, 1),
+        Version::new(4, 9, 2),
     ];
 
     if !versions.contains(&metaheader.version) {
@@ -303,6 +312,10 @@ fn main() {
         if metaheader.version >= version {
             println!(
                 "cargo:rustc-cfg=feature=\"{}.{}.{}\"",
+                version.major, version.minor, version.patch
+            );
+            println!(
+                "cargo:version_\"{}.{}.{}\"=1",
                 version.major, version.minor, version.patch
             );
         }
